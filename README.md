@@ -1,2 +1,10 @@
-# Solder-Sustainer-v2
-The files for my Solder Sustainer v2 project! Check it out at www.roboticworx.io
+# Solder_Sustainer_v2
+Files for my Solder Sustainer v2 project!
+
+**_(Remember, you can download anything you'd like for yourself but you CAN'T sell it. All my work is licensed, thanks!)_**
+
+Be sure to go to www.roboticworx.io for detailed tutorials on a variety of projects! 
+Thanks for reading and happy making!
+
+Best regards,
+Justin
