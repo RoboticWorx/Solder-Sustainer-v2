@@ -1,0 +1,112 @@
+/* 
+For the Solder Sustainer v2 project from RoboticWorx.
+Build this project yourself at www.roboticworx.io!
+*/
+
+// Import libraries
+#include <esp_now.h>
+#include <WiFi.h>
+#include <FastLED.h>
+#include <MCP342X.h>
+
+MCP342X myADC; // Create ADC object
+
+#define BAT_PIN 10 // Define the pin connected to the battery LED
+#define NUM_LEDS_BAT 1 // Define the number of LEDs in the battery strip
+
+CRGB battLeds[NUM_LEDS_BAT];
+
+uint8_t broadcastAddress[] = {0x30, 0x30, 0xF9, 0xC3, 0x99, 0x0C}; // Reciever MAC Address (CHANGE TO YOUR OWN) 
+
+// Data structure to hold the data being sent wireless
+typedef struct struct_message { 
+  int a; // Pedal 1 (Extrude)
+  int b; // Pedal 2 (Retract)
+} struct_message;
+struct_message dataSent;
+
+esp_now_peer_info_t peerInfo;
+
+bool checkPower = true; // Check battery level on start-up
+
+const int p1Pin = 3; // Extrude pedal pin
+const int p2Pin = 4; // Retract pedal pin
+
+unsigned long previousMillis = 0; // Store the last time LED colors were updated
+
+void setup() {
+  Wire.begin(1, 0); // SDA_PIN and SCL_PIN
+
+  myADC.configure(MCP342X_MODE_CONTINUOUS | MCP342X_CHANNEL_1 | MCP342X_SIZE_16BIT | MCP342X_GAIN_1X); // Configure ADC IC
+
+  // Give each pedal a pull-down resistor to filter noise
+  pinMode(p1Pin, INPUT_PULLDOWN);
+  pinMode(p2Pin, INPUT_PULLDOWN);
+
+  FastLED.addLeds<SK6812, BAT_PIN, GRB>(battLeds, NUM_LEDS_BAT); // Add battery LED
+  FastLED.setBrightness(100); // 0-255, 255 being the brightest
+
+  WiFi.mode(WIFI_STA); // Initialize Wi-Fi
+
+  // Init ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    // There's a problem
+    return;
+  }
+  else
+  {
+    // All good
+  }
+
+  esp_now_register_send_cb(callData); // Check the status of the data being sent
+
+  // Define peer and wireless info
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) { // Add peer
+    // Failed to add peer
+    return;
+  }
+}
+
+void loop() {
+  unsigned long currentMillis = millis();  // Get the current time
+
+  if ((currentMillis - previousMillis >= 120000) || checkPower) // Every 2 minutes, update battery color
+  {
+    static int16_t data;
+    
+    // Get ADC data
+    myADC.startConversion();
+    myADC.getResult(&data);
+
+    int ledColor = map(data, 15010, 19161, 0, 190); // Map the battery voltage to a color
+    fill_solid(battLeds, NUM_LEDS_BAT, CHSV(ledColor, 255, 255)); // Set battery LED to the current color
+    
+    checkPower = false;
+    previousMillis = currentMillis;
+  }
+
+  FastLED.show(); // Show battery color
+
+  dataSent.a = digitalRead(p1Pin); // Read extrusion pedal
+  dataSent.b = digitalRead(p2Pin); // Read retraction pedal
+
+  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &dataSent, sizeof(dataSent)); // Send the data
+
+  //if (result == ESP_OK) 
+    // Sent successfully
+  //else 
+    // Data did not send
+}
+
+// Get wireless data reciept
+void callData(const uint8_t *mac_addr, esp_now_send_status_t status)
+{
+  //if (status == ESP_NOW_SEND_SUCCESS)
+    // Delivery successful
+  //else
+    // Delivery failed
+}
