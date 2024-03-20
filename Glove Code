@@ -114,18 +114,18 @@ void loop()
   else if (dataRecieved.a == 1 && dataRecieved.b == 0) // Extrude pedal pressed
   {
     extrude(255);
-    fill_solid(leds, NUM_LEDS, CHSV(0, 0, 0)); // Set flashlight LEDs to black
+    fill_solid(leds, NUM_LEDS, CHSV(0, 0, 0)); // Set flashlight LEDs to black (turn off)
   }
   else if (dataRecieved.a == 0 && dataRecieved.b == 1) // Retract pedal pressed
   {
     retract(255);
-    fill_solid(leds, NUM_LEDS, CHSV(0, 0, 0)); // Set flashlight LEDs to black
+    fill_solid(leds, NUM_LEDS, CHSV(0, 0, 0)); // Set flashlight LEDs to black (turn off)
   }
   else // No pedals pressed
   {
     retract(0);
     extrude(0);
-    fill_solid(leds, NUM_LEDS, CHSV(0, 0, 0)); // Set flashlight LEDs to black
+    fill_solid(leds, NUM_LEDS, CHSV(0, 0, 0)); // Set flashlight LEDs to black (turn off)
   }
 
   FastLED.show(); // Show colors
