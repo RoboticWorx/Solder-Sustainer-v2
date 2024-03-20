@@ -93,7 +93,8 @@ void loop()
   if ((currentMillis - previousMillis >= 120000) || checkPower) // Every 2 minutes, update battery color
   {
     static int16_t  result;
-    
+
+    // Get ADC data
     myADC.startConversion();
     myADC.getResult(&result);
 
