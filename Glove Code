@@ -1,0 +1,163 @@
+/* 
+For the Solder Sustainer v2 project from RoboticWorx.
+Build this project yourself at www.roboticworx.io!
+*/
+
+// Import libraies
+#include <esp_now.h>
+#include <WiFi.h>
+#include <FastLED.h>
+#include <MCP342X.h>
+
+MCP342X myADC; // Create object
+
+#define FL_PIN 2 // Define the pin connected to the data input of the flashlight LED strip
+#define BAT_PIN 10 // Define the pin connected to the battery LED
+#define NUM_LEDS 3 // Define the number of LEDs in the flashlight strip
+#define NUM_LEDS_BAT 1 // Define the number of LEDs in the battery strip
+
+CRGB leds[NUM_LEDS]; 
+CRGB battLeds[NUM_LEDS_BAT];
+
+// Data structure to hold the data being sent wireless
+typedef struct struct_message 
+{
+  int a; // Pedal 1 (Extrude)
+  int b; // Pedal 2 (Retract)
+} struct_message;
+struct_message dataRecieved;
+
+const int freq = 260; // Motor driver frequency
+const int channel1 = 0; // Channel for aIn1
+const int channel2 = 1; // Channel for aIn2
+const int channel3 = 2; // Channel for bIn1
+const int resolution = 8; // 8-bit speed resolution for each channel (0-255)
+
+// Define which pins are connected where
+const int aIn1 = 3;
+const int aIn2 = 4;
+const int bIn1 = 5;
+const int bIn2 = 6;
+const int enablePin = 7;
+
+bool checkPower = true; // Check battery level on start-up
+
+unsigned long previousMillis = 0; // Store the last time LED colors were updated
+
+void setup() {
+  Wire.begin(1, 0); // SDA_PIN and SCL_PIN
+
+  myADC.configure(MCP342X_MODE_CONTINUOUS | MCP342X_CHANNEL_1 | MCP342X_SIZE_16BIT | MCP342X_GAIN_1X); // Configure ADC IC
+
+  pinMode(enablePin, OUTPUT); // Define as output pin
+  digitalWrite(enablePin, HIGH); // Activate motor driver IC
+
+  WiFi.mode(WIFI_STA); // Set device as a Wi-Fi Station
+
+  // Init ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    // There's a problem
+    return;
+  }
+  else
+  {
+    // All good
+  }
+  
+  esp_now_register_recv_cb(callData); // Get wireless data
+
+  FastLED.addLeds<SK6812, FL_PIN, GRB>(leds, NUM_LEDS); // Add flashlight LEDs
+  FastLED.addLeds<SK6812, BAT_PIN, GRB>(battLeds, NUM_LEDS_BAT); // Add battery LED
+  FastLED.setBrightness(200); // Set brightness from 0-255, 255 being the brightest
+
+  // Configure PWM functionalities
+  ledcSetup(channel1, freq, resolution);
+  ledcSetup(channel2, freq, resolution);
+  ledcSetup(channel3, freq, resolution);
+  
+  // Attach the channels to the GPIOs to be controlled
+  ledcAttachPin(aIn1, channel1);
+  ledcAttachPin(aIn2, channel2);
+  ledcAttachPin(bIn1, channel3);
+  pinMode(bIn2, INPUT_PULLDOWN);
+
+  // Buzz twice
+  buzz(250, 250);
+  buzz(250, 250);
+}
+
+void loop() 
+{
+  unsigned long currentMillis = millis(); // Get the current time
+
+  if ((currentMillis - previousMillis >= 120000) || checkPower) // Every 2 minutes, update battery color
+  {
+    static int16_t  result;
+    
+    myADC.startConversion();
+    myADC.getResult(&result);
+
+    int ledColor = map(result, 15010, 19161, 0, 190); // Map the battery voltage to a color
+    fill_solid(battLeds, NUM_LEDS_BAT, CHSV(ledColor, 255, 255)); // Set battery LED to the current color
+    
+    checkPower = false;
+    previousMillis = currentMillis;
+  }
+
+  // If-else action chain
+  if (dataRecieved.a == 1 && dataRecieved.b == 1) // Both pedals pressed
+  {
+    retract(0);
+    extrude(0);
+    fill_solid(leds, NUM_LEDS, CHSV(0, 0, 255)); // Set flashlight LEDs white (turn on)
+  }
+  else if (dataRecieved.a == 1 && dataRecieved.b == 0) // Extrude pedal pressed
+  {
+    extrude(255);
+    fill_solid(leds, NUM_LEDS, CHSV(0, 0, 0)); // Set flashlight LEDs to black
+  }
+  else if (dataRecieved.a == 0 && dataRecieved.b == 1) // Retract pedal pressed
+  {
+    retract(255);
+    fill_solid(leds, NUM_LEDS, CHSV(0, 0, 0)); // Set flashlight LEDs to black
+  }
+  else // No pedals pressed
+  {
+    retract(0);
+    extrude(0);
+    fill_solid(leds, NUM_LEDS, CHSV(0, 0, 0)); // Set flashlight LEDs to black
+  }
+
+  FastLED.show(); // Show colors
+}
+
+// Extrude motor function
+void extrude(int speed) // 0-255
+{
+  ledcWrite(channel2, speed);
+  digitalWrite(aIn1, LOW);
+}
+
+// Retract motor function
+void retract(int speed) // 0-255
+{
+  // Switch polarity/channels
+  ledcWrite(channel1, speed);
+  digitalWrite(aIn2, LOW);
+}
+
+// Buzz motor function
+void buzz(int timeOn, int timeOff)
+{
+  ledcWrite(channel3, 200); // Buzzing
+  digitalWrite(bIn2, LOW);
+  delay(timeOn); // Wait timeOn
+  ledcWrite(channel3, 0); // Stop buzzing
+  digitalWrite(bIn2, LOW);
+  delay(timeOff); // Wait timeOff
+}
+
+// Copy over wireless data
+void callData(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&dataRecieved, incomingData, sizeof(dataRecieved));
+}
