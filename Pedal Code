@@ -3,10 +3,13 @@ For the Solder Sustainer v2 project from RoboticWorx.
 Build this project yourself at www.roboticworx.io!
 */
 
+// Hi all! I've updated the Arduino code to now work with the ESP-IDF v5 port. There were driver issues with FastLED so I've switched to NeoPixel. 
+// Best, Justin
+
 // Import libraries
+#include <Adafruit_NeoPixel.h>
 #include <esp_now.h>
 #include <WiFi.h>
-#include <FastLED.h>
 #include <MCP342X.h>
 
 MCP342X myADC; // Create ADC object
@@ -14,11 +17,11 @@ MCP342X myADC; // Create ADC object
 #define BAT_PIN 10 // Define the pin connected to the battery LED
 #define NUM_LEDS_BAT 1 // Define the number of LEDs in the battery strip
 
-CRGB battLeds[NUM_LEDS_BAT];
+Adafruit_NeoPixel battLeds = Adafruit_NeoPixel(NUM_LEDS_BAT, BAT_PIN, NEO_GRB + NEO_KHZ800);
 
-uint8_t broadcastAddress[] = {0x30, 0x30, 0xF9, 0xC3, 0x99, 0x0C}; // Reciever MAC Address (CHANGE TO YOUR OWN) 
+uint8_t broadcastAddress[] = {0x30, 0x30, 0xF9, 0xBC, 0xBF, 0xF8}; // Receiver MAC Address (CHANGE TO YOUR OWN)
 
-// Data structure to hold the data being sent wireless
+// Data structure to hold the data being sent wirelessly
 typedef struct struct_message { 
   int a; // Pedal 1 (Extrude)
   int b; // Pedal 2 (Retract)
@@ -35,6 +38,13 @@ const int p2Pin = 4; // Retract pedal pin
 unsigned long previousMillis = 0; // Store the last time LED colors were updated
 
 void setup() {
+  Serial.begin(115200);
+
+  // Initialize NeoPixel
+  battLeds.begin();
+  battLeds.setBrightness(100); // 0-255, 255 being the brightest
+  battLeds.show(); // Initialize all pixels to 'off'
+
   Wire.begin(1, 0); // SDA_PIN and SCL_PIN
 
   myADC.configure(MCP342X_MODE_CONTINUOUS | MCP342X_CHANNEL_1 | MCP342X_SIZE_16BIT | MCP342X_GAIN_1X); // Configure ADC IC
@@ -43,21 +53,13 @@ void setup() {
   pinMode(p1Pin, INPUT_PULLDOWN);
   pinMode(p2Pin, INPUT_PULLDOWN);
 
-  FastLED.addLeds<SK6812, BAT_PIN, GRB>(battLeds, NUM_LEDS_BAT); // Add battery LED
-  FastLED.setBrightness(100); // 0-255, 255 being the brightest
-
   WiFi.mode(WIFI_STA); // Initialize Wi-Fi
 
   // Init ESP-NOW
   if (esp_now_init() != ESP_OK) {
-    // There's a problem
+    Serial.println("Error initializing ESP-NOW");
     return;
   }
-  else
-  {
-    // All good
-  }
-
   esp_now_register_send_cb(callData); // Check the status of the data being sent
 
   // Define peer and wireless info
@@ -66,7 +68,7 @@ void setup() {
   peerInfo.encrypt = false;
 
   if (esp_now_add_peer(&peerInfo) != ESP_OK) { // Add peer
-    // Failed to add peer
+    Serial.println("Failed to add peer");
     return;
   }
 }
@@ -74,39 +76,41 @@ void setup() {
 void loop() {
   unsigned long currentMillis = millis();  // Get the current time
 
-  if ((currentMillis - previousMillis >= 120000) || checkPower) // Every 2 minutes, update battery color
-  {
+  if ((currentMillis - previousMillis >= 500) || checkPower) // Every 500ms, update color
+  { 
     static int16_t data;
-    
+
     // Get ADC data
     myADC.startConversion();
     myADC.getResult(&data);
 
-    int ledColor = map(data, 15010, 19161, 0, 190); // Map the battery voltage to a color
-    fill_solid(battLeds, NUM_LEDS_BAT, CHSV(ledColor, 255, 255)); // Set battery LED to the current color
-    
+    int ledColor = map(data, 15010, 19161, 0, 255); // Map the battery voltage to a value between 0 and 255
+
+    battLeds.setPixelColor(0, battLeds.Color(255 - ledColor, 0, ledColor));  // Set the battery LED to the current color (more blue or more red)
+
+    battLeds.show(); // Show the updated colors
+
     checkPower = false;
     previousMillis = currentMillis;
   }
-
-  FastLED.show(); // Show battery color
 
   dataSent.a = digitalRead(p1Pin); // Read extrusion pedal
   dataSent.b = digitalRead(p2Pin); // Read retraction pedal
 
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &dataSent, sizeof(dataSent)); // Send the data
 
-  //if (result == ESP_OK) 
-    // Sent successfully
-  //else 
-    // Data did not send
+  if (result == ESP_OK) {
+    //Serial.println("Data sent successfully");
+  } else {
+    //Serial.println("Error sending data");
+  }
 }
 
-// Get wireless data reciept
-void callData(const uint8_t *mac_addr, esp_now_send_status_t status)
-{
-  //if (status == ESP_NOW_SEND_SUCCESS)
-    // Delivery successful
-  //else
-    // Delivery failed
+// Get wireless data receipt
+void callData(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  if (status == ESP_NOW_SEND_SUCCESS) {
+    //Serial.println("Delivery successful");
+  } else {
+    //Serial.println("Delivery failed");
+  }
 }
